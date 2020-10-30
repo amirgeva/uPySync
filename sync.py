@@ -81,7 +81,7 @@ class Synchronizer:
             self.send(f'data=binascii.unhexlify("{encoded}")')
             self.send(f'f.write(data)')
             self.flush()
-            print(self.delayed_read_response())
+            self.delayed_read_response()
         except OSError:
             pass
 
