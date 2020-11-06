@@ -1,13 +1,22 @@
+#!/usr/bin/env python3
 import sys
+import argparse
 import serial
 import os
 import time
 import binascii
 
-list_commands = '''
+local_dir = '.'
+target_dir = '/'
+list_commands = ''
+
+
+def initialize_commands():
+    global list_commands
+    list_commands = f'''
 import os
 import binascii
-files=os.listdir("/")
+files=os.listdir("{target_dir}")
 for f in files:
 v = binascii.crc32(open(f,"rb").read())
 print("FILE,"+f+","+str(v))
@@ -69,15 +78,15 @@ class Synchronizer:
 
     def scan_local_files(self, files):
         for f in files:
-            crc = binascii.crc32(open(f, "rb").read())
+            crc = binascii.crc32(open(os.path.join(local_dir, f), "rb").read())
             self.local_files[f] = crc
 
     def send_file(self, filename):
         try:
             print(f"Sending file: {filename}")
-            data = open(filename, 'rb').read()
+            data = open(os.path.join(local_dir, filename), 'rb').read()
             encoded = binascii.hexlify(data).decode('utf-8')
-            self.send(f'with open("/{filename}","wb") as f:')
+            self.send(f'with open("{target_dir}{filename}","wb") as f:')
             self.send(f'data=binascii.unhexlify("{encoded}")')
             self.send(f'f.write(data)')
             self.flush()
@@ -87,7 +96,7 @@ class Synchronizer:
 
     def sync_files(self, files):
         if len(files) == 0:
-            files = os.listdir('.')
+            files = os.listdir(local_dir)
         self.send_lines(list_commands)
         self.parse_remote_files(self.delayed_read_response())
         self.scan_local_files(files)
@@ -108,13 +117,21 @@ class Synchronizer:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: sync.py <port> [file] [file] ...")
-        print("Default is to sync all files in current directory with board's root folder")
-    else:
-        s = Synchronizer(sys.argv[1])
-        s.sync_files(sys.argv[2:])
-        s.close()
+    parser = argparse.ArgumentParser(description='Synchronize micropython files')
+    parser.add_argument('-p', metavar='Port', type=str, required=True,
+                        help='Serial port of board (e.g. COM3 or /dev/ttyUSB0)')
+    parser.add_argument('-t', metavar='Target', type=str, required=False, help='Target directory, default /')
+    parser.add_argument('files', metavar='File', type=str, nargs='*', help='Files to syncronize.  Default all files')
+    args = parser.parse_args()
+    if args.t is not None:
+        global target_dir
+        target_dir = args.t
+        if not target_dir.endswith('/'):
+            target_dir = target_dir + '/'
+    initialize_commands()
+    s = Synchronizer(args.p)
+    s.sync_files(args.files)
+    s.close()
 
 
 if __name__ == '__main__':
